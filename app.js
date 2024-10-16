@@ -21,29 +21,42 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-    if(message.author.id === '1295725261043798088'){
-        // console.log('Bot message, skipping flow');
+    if (message.author.id === '1295725261043798088') {
+        // Bot message, skip processing
+        return;
     }
-    else if(message.content.includes('may')){
-        message.channel.send(`She's really really pretty`)
-    }
-    else if(message.channel.id === '1232486619165233212' || message.channel.id === '1232486691399536661'){
-        console.log(message)
-        if(message.attachments.size <= 0){
-            try{
-                await message.channel.send({
-                    content: 'This channel only allows image posts. Your message has been deleted.',
-                    ephemeral: true, // Optional: Makes the message visible only to the user
+
+    if (message.channel.id === '1232486619165233212' || 
+        message.channel.id === '1232486691399536661') {
+
+        console.log(message);
+
+        if (message.attachments.size <= 0) {
+            try {
+                const botMessage = await message.channel.send({
+                    content: 'This channel only allows image posts. Please start a thread on the image if you want to discuss it.',
                 });
 
+                // Delete the user's message
                 await message.delete();
                 console.log('Message without image deleted');
-            }catch (error){
+
+                // Delete the bot's message after 2 minutes (120000 ms)
+                setTimeout(async () => {
+                    try {
+                        await botMessage.delete();
+                        console.log('Bot message deleted after timeout');
+                    } catch (error) {
+                        console.error('Bot message could not be deleted: ', error);
+                    }
+                }, 9000); // 2 minutes
+            } catch (error) {
                 console.error('Message could not be deleted: ', error);
-            }   
+            }
         }
     }
-})
+});
+
 
 const roleMapping = {
     '💜': '1219762750180429914', // Custom emoji name for purple heart
