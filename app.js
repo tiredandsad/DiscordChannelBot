@@ -61,8 +61,10 @@ client.on('messageCreate', async (message) => {
 const roleMapping = {
     '💜': '1219762750180429914', // Custom emoji name for purple heart
     '🩷': '1219762832942563401',   // Custom emoji name for pink heart
-    'heart_sky': '1219762802416160949',    // Custom emoji name for sky heart
-    '💚': '1290815519175344211'    // Custom emoji name for green heart
+    'heart_sky': '1219762802416160949',  // Custom emoji name for sky heart
+    '💚': '1290815519175344211',
+    'heart_yellow': '1307470449457889342',
+    'heart_sage': '1307470382785101945'
 };
 
 client.on('messageReactionAdd', async (reaction, user) => {
@@ -153,6 +155,20 @@ client.on('messageReactionRemove', async (reaction, user) => {
         }
     }
 });
+const fitnessSetup = () => {
+    //needs to take, startDate, endDate, and current metric to create a new fitness goal
+    //should remove old goal when new one is configured.
+    //should generate a message and pin it with current metric
+}
+
+const fitnessUpdate = () => {
+    //neeeds to keep a count of whatever the current metric
+
+}
+const fitnessLeaderboard = () => {
+    //pull and list the users descending for the current metric
+    //Should update at 05:00 each morning the event is active
+}
 
 
 //Check this message for reacts 1295740167826702368
