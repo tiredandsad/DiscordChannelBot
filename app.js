@@ -1,23 +1,52 @@
+import { LizardUpdate,  } from './crudUtil.js'
+const cron = require('node-cron');
+const { DateTime } = require('luxon')
+
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 
 
-const client = new Client({ 
+const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
     ],
     partials: [
-        Partials.Message, 
-        Partials.Channel, 
+        Partials.Message,
+        Partials.Channel,
         Partials.Reaction
     ],
 });
 
+const lastUserMap = new Map();
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
+});
+
+const lizardUpdate = (userID) => {
+
+}
+
+const getLizard = () => {
+    
+}
+
+// Cron job to run every minute (we'll filter for 9:00 AM MST in the callback)
+cron.schedule('* * * * *', async () => {
+    const channelId = '1419462535278628914'
+    const now = DateTime.now().setZone('America/Denver'); // MST/MDT time zone
+
+    if (now.weekday === 7 && now.hour === 9 && now.minute === 0) {
+        // Sunday at 9:00 AM MST/MDT
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+            channel.send('🦎 Good Morning! This is the leaderboard for lizards of the last week.');
+        } else {
+            console.error('Channel not found!');
+        }
+    }
 });
 
 client.on('messageCreate', async (message) => {
@@ -26,7 +55,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    if (message.channel.id === '1232486619165233212' || 
+    if (message.channel.id === '1232486619165233212' ||
         message.channel.id === '1232486691399536661') {
 
         console.log(message);
@@ -55,13 +84,30 @@ client.on('messageCreate', async (message) => {
             }
         }
     }
+    if (message.channel.id === '1402327076182167642') {
+        const lastUserID = lastUserMap.get(message.channel.id);
+
+        if (message.content === '🦎' && message.author.id !== lastUserID) {
+            lastUserMap.set(message.channel.id, message.author.id)
+            lizardUpdate(message.author.id)
+            return
+        }
+        else {
+            try {
+                await message.delete();
+                console.log('Yo dog, a goddamn overzealous lizard has had a message deleted');
+            } catch (error) {
+                console.error('Lizard message unable to be deleted: ', error);
+            }
+        }
+    }
 });
 
 
 const roleMapping = {
-    '💜': '1219762750180429914', // Custom emoji name for purple heart
-    '🩷': '1219762832942563401',   // Custom emoji name for pink heart
-    'heart_sky': '1219762802416160949',  // Custom emoji name for sky heart
+    '💜': '1219762750180429914', 
+    '🩷': '1219762832942563401',   
+    'heart_sky': '1219762802416160949',  
     '💚': '1290815519175344211',
     'heart_yellow': '1307470449457889342',
     'heart_sage': '1307470382785101945'
@@ -169,8 +215,5 @@ const fitnessLeaderboard = () => {
     //pull and list the users descending for the current metric
     //Should update at 05:00 each morning the event is active
 }
-
-
-//Check this message for reacts 1295740167826702368
 
 client.login(process.env.DISCORD_TOKEN)
