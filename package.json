@@ -1,10 +1,15 @@
 {
   "dependencies": {
+    "@discordjs/rest": "^2.6.0",
+    "discord-api-types": "^0.38.26",
     "discord.js": "^14.16.3",
+    "dotenv": "^17.2.2",
     "luxon": "^3.7.2",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "postgres": "^3.4.7"
   },
   "scripts": {
     "start": "node --env-file=.env app.js"
-  }
+  },
+  "type": "module"
 }

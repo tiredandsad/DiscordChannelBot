@@ -1,8 +1,34 @@
-import { LizardUpdate,  } from './crudUtil.js'
-const cron = require('node-cron');
-const { DateTime } = require('luxon')
+import cron from 'node-cron';
+import { DateTime } from 'luxon';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import 'dotenv/config';
+import { lizardUpdate, resetWeek, pullLizardWeekly, pullLizardAllTime, lizardData, updateNeonData } from './crudUtil.js';
+import { REST } from '@discordjs/rest';
+import { Routes } from 'discord-api-types/v10';
 
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+
+
+const commands = [
+    {
+        name: 'lizardleaderboard',
+        description: 'Pull the weekly lizard leaderboard',
+    },
+];
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+(async () => {
+    try {
+        console.log('Started refreshing application (/) commands.');
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID), // your bot's client ID
+            { body: commands },
+        );
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error(error);
+    }
+})();
 
 
 const client = new Client({
@@ -25,26 +51,86 @@ client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
-const lizardUpdate = (userID) => {
-
-}
-
 const getLizard = () => {
-    
+
 }
 
 // Cron job to run every minute (we'll filter for 9:00 AM MST in the callback)
-cron.schedule('* * * * *', async () => {
-    const channelId = '1419462535278628914'
-    const now = DateTime.now().setZone('America/Denver'); // MST/MDT time zone
+cron.schedule('0 9 * * 0', async () => {
+    const channelId = '1419462535278628914';
+    const now = DateTime.now().setZone('America/Denver'); // MST/MDT
 
     if (now.weekday === 7 && now.hour === 9 && now.minute === 0) {
-        // Sunday at 9:00 AM MST/MDT
         const channel = await client.channels.fetch(channelId);
-        if (channel) {
-            channel.send('🦎 Good Morning! This is the leaderboard for lizards of the last week.');
-        } else {
-            console.error('Channel not found!');
+        if (!channel) return console.error('Channel not found!');
+
+        // --- Weekly leaderboard ---
+        const weeklyLeaderboard = await pullLizardWeekly();
+        let weeklyMessage = '🦎 --Weekly Lizard Leaderboard-- 🦎\n';
+        weeklyLeaderboard.forEach((user, index) => {
+            weeklyMessage += `${index + 1}. <@${user.userid}> - ${user.score}\n`;
+        });
+        await channel.send(weeklyMessage);
+
+        // --- All-time leaderboard ---
+        const allTimeLeaderboard = await pullLizardAllTime();
+        let allTimeMessage = '🌟 ---All-Time Lizard Leaderboard--- 🌟\n';
+        allTimeLeaderboard.forEach((user, index) => {
+            allTimeMessage += `${index + 1}. <@${user.userid}> - ${user.score}\n`;
+        });
+        await channel.send(allTimeMessage);
+
+        await resetWeek();
+    }
+});
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isCommand()) return;
+    if (interaction.commandName === 'pushlizards') {
+        console.log('pushlizards called')
+        await interaction.deferReply(); // gives time in case DB is slow
+        try {
+            await updateNeonData();
+            await interaction.editReply('✅ Lizard data has been pushed to NeonDB.');
+        } catch (err) {
+            console.error(err);
+            await interaction.editReply('❌ Failed to push lizard data. Check logs.');
+        }
+    }
+
+    if (interaction.commandName === 'lizardleaderboard') {
+        console.log('lizardleaderboard called')
+        await interaction.deferReply({ ephemeral: true });
+
+        let leaderboard;
+        try {
+            leaderboard = await pullLizardWeekly();
+        } catch (err) {
+            console.error('Failed to pull from Postgres, falling back to local data:', err);
+            leaderboard = [...lizardData].sort((a, b) => b.score - a.score);
+        }
+
+        if (!leaderboard || leaderboard.length === 0) {
+            return interaction.editReply('No lizard data available yet.');
+        }
+
+        let message = '🦎 **Weekly Lizard Leaderboard** 🦎\n';
+        leaderboard.forEach((user, index) => {
+            message += `${index + 1}. <@${user.userid ?? user.id}> - ${user.score}\n`;
+        });
+
+        // Fetch the channel and send the message
+        try {
+            const channel = await client.channels.fetch('1419462535278628914');
+            if (channel) {
+                await channel.send(message);
+                await interaction.editReply('Leaderboard posted successfully!');
+            } else {
+                await interaction.editReply('Channel not found.');
+            }
+        } catch (error) {
+            console.error('Failed to send leaderboard message:', error);
+            await interaction.editReply('Failed to post leaderboard.');
         }
     }
 });
@@ -105,9 +191,9 @@ client.on('messageCreate', async (message) => {
 
 
 const roleMapping = {
-    '💜': '1219762750180429914', 
-    '🩷': '1219762832942563401',   
-    'heart_sky': '1219762802416160949',  
+    '💜': '1219762750180429914',
+    '🩷': '1219762832942563401',
+    'heart_sky': '1219762802416160949',
     '💚': '1290815519175344211',
     'heart_yellow': '1307470449457889342',
     'heart_sage': '1307470382785101945'
