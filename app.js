@@ -100,6 +100,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'lizardleaderboard') {
         console.log('lizardleaderboard called')
+        await updateNeonData();
         await interaction.deferReply({ ephemeral: true });
 
         let leaderboard;
