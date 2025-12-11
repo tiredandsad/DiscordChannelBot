@@ -2,35 +2,50 @@ import cron from 'node-cron';
 import { DateTime } from 'luxon';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import 'dotenv/config';
-import { lizardUpdate, resetWeek, pullLizardWeekly, pullLizardAllTime, lizardData, updateNeonData } from './crudUtil.js';
+
+import { 
+    lizardUpdate,
+    resetWeek,
+    pullLizardWeekly,
+    pullLizardAllTime,
+    pullMergedWeekly,
+    lizardData,
+    updateNeonData
+} from './crudUtil.js';
+
 import { REST } from '@discordjs/rest';
 import { Routes } from 'discord-api-types/v10';
 
-
-
+// Slash commands
 const commands = [
     {
         name: 'lizardleaderboard',
         description: 'Pull the weekly lizard leaderboard',
     },
+    {
+        name: 'pushlizards',
+        description: 'Force push lizard data to NeonDB',
+    }
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log('Started refreshing application (/) commands.');
+        console.log('Started refreshing app (/) commands.');
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID), // your bot's client ID
+            Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands },
         );
-        console.log('Successfully reloaded application (/) commands.');
+        console.log('Successfully reloaded app (/) commands.');
     } catch (error) {
         console.error(error);
     }
 })();
 
-
+// ----------------------------------
+// Discord Client Setup
+// ----------------------------------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -46,150 +61,129 @@ const client = new Client({
     ],
 });
 
-const lastUserMap = new Map();
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
-const getLizard = () => {
-
-}
-
-// Cron job to run every minute (we'll filter for 9:00 AM MST in the callback)
+// ----------------------------------
+// WEEKLY AUTO-POST (ONLY ON SUNDAY)
+// ----------------------------------
 cron.schedule('0 9 * * 0', async () => {
     const channelId = '1419462535278628914';
-    const now = DateTime.now().setZone('America/Denver'); // MST/MDT
+    const now = DateTime.now().setZone('America/Denver');
 
-    if (now.weekday === 7 && now.hour === 9 && now.minute === 0) {
+    if (now.weekday === 7 && now.hour === 9) {
         const channel = await client.channels.fetch(channelId);
-        if (!channel) return console.error('Channel not found!');
+        if (!channel) return;
 
-        // --- Weekly leaderboard ---
-        const weeklyLeaderboard = await pullLizardWeekly();
-        let weeklyMessage = '🦎 --Weekly Lizard Leaderboard-- 🦎\n';
-        weeklyLeaderboard.forEach((user, index) => {
-            weeklyMessage += `${index + 1}. <@${user.userid}> - ${user.score}\n`;
-        });
-        await channel.send(weeklyMessage);
+        // Weekly leaderboard
+        const weekly = await pullLizardWeekly();
+        let msg = '🦎 **Weekly Lizard Leaderboard** 🦎\n';
+        weekly.forEach((u, i) => msg += `${i + 1}. <@${u.userid}> - ${u.score}\n`);
+        await channel.send(msg);
 
-        // --- All-time leaderboard ---
-        const allTimeLeaderboard = await pullLizardAllTime();
-        let allTimeMessage = '🌟 ---All-Time Lizard Leaderboard--- 🌟\n';
-        allTimeLeaderboard.forEach((user, index) => {
-            allTimeMessage += `${index + 1}. <@${user.userid}> - ${user.score}\n`;
-        });
-        await channel.send(allTimeMessage);
-
-        await resetWeek();
+        // All time leaderboard
+        const alltime = await pullLizardAllTime();
+        let msg2 = '🌟 **All-Time Lizard Leaderboard** 🌟\n';
+        alltime.forEach((u, i) => msg2 += `${i + 1}. <@${u.userid}> - ${u.score}\n`);
+        await channel.send(msg2);
     }
 });
 
+// ----------------------------------
+// Slash Commands
+// ----------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
+
+    // Manual push
     if (interaction.commandName === 'pushlizards') {
-        console.log('pushlizards called')
-        await interaction.deferReply(); // gives time in case DB is slow
+        await interaction.deferReply();
         try {
             await updateNeonData();
-            await interaction.editReply('✅ Lizard data has been pushed to NeonDB.');
+            await interaction.editReply('✅ Pushed local lizard data to NeonDB.');
         } catch (err) {
             console.error(err);
-            await interaction.editReply('❌ Failed to push lizard data. Check logs.');
+            await interaction.editReply('❌ Failed to push data.');
         }
     }
 
+    // Leaderboard
     if (interaction.commandName === 'lizardleaderboard') {
-        console.log('lizardleaderboard called')
-        await updateNeonData();
         await interaction.deferReply({ ephemeral: true });
 
         let leaderboard;
+
         try {
-            leaderboard = await pullLizardWeekly();
+            leaderboard = await pullMergedWeekly(); // merged Neon + local
         } catch (err) {
-            console.error('Failed to pull from Postgres, falling back to local data:', err);
+            console.error(err);
             leaderboard = [...lizardData].sort((a, b) => b.score - a.score);
         }
 
-        if (!leaderboard || leaderboard.length === 0) {
-            return interaction.editReply('No lizard data available yet.');
-        }
+        if (!leaderboard || leaderboard.length === 0)
+            return interaction.editReply('No lizard data available.');
 
-        let message = '🦎 **Weekly Lizard Leaderboard** 🦎\n';
-        leaderboard.forEach((user, index) => {
-            message += `${index + 1}. <@${user.userid ?? user.id}> - ${user.score}\n`;
+        let msg = '🦎 **Weekly Lizard Leaderboard** 🦎\n';
+        leaderboard.forEach((u, i) => {
+            msg += `${i + 1}. <@${u.userid ?? u.id}> - ${u.score}\n`;
         });
 
-        // Fetch the channel and send the message
         try {
             const channel = await client.channels.fetch('1419462535278628914');
-            if (channel) {
-                await channel.send(message);
-                await interaction.editReply('Leaderboard posted successfully!');
-            } else {
-                await interaction.editReply('Channel not found.');
-            }
-        } catch (error) {
-            console.error('Failed to send leaderboard message:', error);
+            await channel.send(msg);
+            await interaction.editReply('Leaderboard posted!');
+        } catch (err) {
+            console.error(err);
             await interaction.editReply('Failed to post leaderboard.');
         }
     }
 });
 
+// ----------------------------------
+// MESSAGE MONITORING FOR LIZARDS
+// ----------------------------------
+const lastUserMap = new Map();
+
 client.on('messageCreate', async (message) => {
-    if (message.author.id === '1295725261043798088') {
-        // Bot message, skip processing
-        return;
-    }
+    if (message.author.id === client.user.id) return;
 
-    if (message.channel.id === '1232486619165233212' ||
-        message.channel.id === '1232486691399536661') {
-
-        console.log(message);
-
-        if (message.attachments.size <= 0) {
-            try {
-                const botMessage = await message.channel.send({
-                    content: 'This channel only allows image posts. Please start a thread on the image if you want to discuss it.',
-                });
-
-                // Delete the user's message
-                await message.delete();
-                console.log('Message without image deleted');
-
-                // Delete the bot's message after 2 minutes (120000 ms)
-                setTimeout(async () => {
-                    try {
-                        await botMessage.delete();
-                        console.log('Bot message deleted after timeout');
-                    } catch (error) {
-                        console.error('Bot message could not be deleted: ', error);
-                    }
-                }, 9000); // 2 minutes
-            } catch (error) {
-                console.error('Message could not be deleted: ', error);
-            }
-        }
-    }
+    // Lizard channel
     if (message.channel.id === '1402327076182167642') {
         const lastUserID = lastUserMap.get(message.channel.id);
 
         if (message.content === '🦎' && message.author.id !== lastUserID) {
-            lastUserMap.set(message.channel.id, message.author.id)
-            lizardUpdate(message.author.id)
-            return
-        }
-        else {
+            lastUserMap.set(message.channel.id, message.author.id);
+            lizardUpdate(message.author.id);
+            return;
+        } else {
             try {
                 await message.delete();
-                console.log('Yo dog, a goddamn overzealous lizard has had a message deleted');
-            } catch (error) {
-                console.error('Lizard message unable to be deleted: ', error);
+            } catch (err) {
+                console.error(err);
             }
         }
     }
-});
 
+    // Image-only channel behavior unchanged
+    if (
+        message.channel.id === '1232486619165233212' ||
+        message.channel.id === '1232486691399536661'
+    ) {
+        if (message.attachments.size <= 0) {
+            const botMessage = await message.channel.send({
+                content: 'This channel only allows image posts.',
+            });
+            await message.delete();
+
+            setTimeout(async () => {
+                try {
+                    await botMessage.delete();
+                } catch {}
+            }, 9000);
+        }
+    }
+});
 
 const roleMapping = {
     '💜': '1219762750180429914',
